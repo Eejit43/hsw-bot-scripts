@@ -19,8 +19,6 @@ async function getAllPagesInNamespace(mwn: Mwn, namespace: number) {
             list: 'allpages',
             apnamespace: namespace,
             aplimit: 'max',
-            formatversion: 2,
-            format: 'json',
         })) as ApiQueryResponse[]
     ).flatMap(({ query }) => query.allpages!);
 }
@@ -38,8 +36,6 @@ async function getAllPagesWithLatestRevision(mwn: Mwn, pages: { title: string }[
             titles: pages.map((page) => page.title),
             rvprop: ['timestamp', 'user', 'content'],
             rvslots: 'main',
-            formatversion: 2,
-            format: 'json',
         })) as ApiQueryResponse[]
     ).flatMap(({ query }) => query.pages!);
 }
