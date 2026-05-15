@@ -4,6 +4,7 @@ import { Mwn } from 'mwn';
 import { readdirSync } from 'node:fs';
 import readline from 'node:readline/promises';
 import { styleText } from 'node:util';
+import { FANDOM_WIKI_URL, WIKI_URL } from './constants';
 
 const readlineInterface = readline.createInterface({
     input: process.stdin,
@@ -51,7 +52,7 @@ while (true) {
     }
 
     loadedMwnInstance ??= await Mwn.init({
-        apiUrl: 'https://hypixelskyblock.minecraft.wiki/api.php',
+        apiUrl: `${WIKI_URL}/api.php`,
         username: process.env.BOT_USERNAME,
         password: process.env.BOT_PASSWORD,
         defaultParams: { assert: 'user' },
@@ -59,7 +60,7 @@ while (true) {
 
     if (usesFandomApi)
         loadedFandomMwnInstance ??= await Mwn.init({
-            apiUrl: 'https://hypixel-skyblock.fandom.com/api.php',
+            apiUrl: `${FANDOM_WIKI_URL}/api.php`,
             username: process.env.FANDOM_BOT_USERNAME,
             password: process.env.FANDOM_BOT_PASSWORD,
             defaultParams: { assert: 'user' },

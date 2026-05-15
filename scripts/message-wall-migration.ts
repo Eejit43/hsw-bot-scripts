@@ -1,303 +1,46 @@
-/* eslint-disable no-await-in-loop, jsdoc/require-jsdoc */
+/* eslint-disable no-await-in-loop */
 
-import { Mwn, type ApiQueryResponse, type LogEvent } from 'mwn';
-import { cacheData, getCache } from '../utilities';
-
-/* eslint-disable @typescript-eslint/naming-convention, unicorn/prevent-abbreviations */
-interface WikiaControllerDiscussionPostGetPostsApiResponse {
-    _links: Links;
-    postCount: string;
-    readOnlyMode: boolean;
-    _embedded: Embedded;
-}
-
-interface Embedded {
-    'count': [{ ARTICLE_COMMENT: number; FORUM: number; WALL: number; total: number }];
-    'wallOwners'?: { userId: string; wallContainerId: string }[];
-    'contributors': { count: number; userInfo: { id: string; avatarUrl: null | string; name: string; badgePermission: string }[] }[];
-    'doc:posts': DocPost[];
-}
-
-export interface DocPost {
-    _links: { permalink: { href: string }[] };
-    createdBy: CreatorInformation;
-    creationDate: CreationDate;
-    creatorId: string;
-    creatorIp: string;
-    forumId: string;
-    forumName: string;
-    id: string;
-    isContentSuppressed: boolean;
-    isDeleted: boolean;
-    isEditable: boolean;
-    isLocked: boolean;
-    isReply: boolean;
-    isReported: boolean;
-    jsonModel: null | string;
-    latestRevisionId: string;
-    modificationDate: CreationDate | null;
-    position: number;
-    rawContent: string;
-    renderedContent: null | string;
-    requesterId: string;
-    siteId: string;
-    threadCreatedBy: CreatorInformation;
-    threadId: string;
-    title: null | string;
-    upvoteCount: number;
-    _embedded: Embedded;
-    lastEditedBy?: CreatorInformation;
-}
-
-interface Embedded {
-    attachments: Attachment[];
-    thread: Thread[];
-    latestRevision: LatestRevision[];
-    openGraph?: OpenGraph[];
-    contentImages?: ContentImage[];
-}
-
-interface Attachment {
-    atMentions: [];
-    contentImages: ContentImage[];
-    openGraphs: OpenGraph[];
-    polls: [];
-    quizzes: [];
-}
-
-interface ContentImage {
-    id: number;
-    position: number;
-    url: string;
-    width: number;
-    height: number;
-    mediaType: MediaType;
-}
-
-enum MediaType {
-    ImageGIF = 'image/gif',
-    ImageJPEG = 'image/jpeg',
-    ImagePNG = 'image/png',
-    ImageWebp = 'image/webp',
-}
-
-interface OpenGraph {
-    id: string;
-    postRevisionId: number;
-    siteId: number;
-    url: string;
-    siteName: string | null;
-    title: null | string;
-    type: Type;
-    imageUrl: null | string;
-    description: null | string;
-    originalUrl: null | string;
-    videoUrl: null | string;
-    videoSecureUrl: null | string;
-    videoType: null | string;
-    videoHeight: number | null;
-    videoWidth: number | null;
-    imageHeight: number | null;
-    imageWidth: number | null;
-    dateRetrieved: CreationDate;
-}
-
-interface CreationDate {
-    epochSecond: number;
-    nano: number;
-}
-
-enum Type {
-    Article = 'article',
-    Empty = '',
-    FeedsPOLL = 'feeds.POLL',
-    FeedsTEXT = 'feeds.TEXT',
-    Image = 'image',
-    Profile = 'profile',
-    Summary = 'summary',
-    SummaryLargeImage = 'summary_large_image',
-    VideoOther = 'video.other',
-    Website = 'website',
-}
-
-interface LatestRevision {
-    creationDate: CreationDate;
-    creatorId: string;
-    creatorIp: string;
-    id: string;
-    jsonModel: null | string;
-    postId: string;
-    rawContent: string;
-    renderedContent: null | string;
-}
-
-interface Thread {
-    containerId: string;
-    containerType: ContainerType;
-    creatorId: string;
-    firstPost: FirstPost;
-    isContentSuppressed: boolean;
-    isEditable: boolean;
-    isFollowed?: boolean;
-    isLocked: boolean;
-    isReported: boolean;
-    postCount: string;
-    tags: [];
-    title: null | string;
-}
-
-enum ContainerType {
-    Wall = 'WALL',
-    ArticleComment = 'ARTICLE_COMMENT',
-    Forum = 'FORUM',
-}
-
-interface FirstPost {
-    id: string;
-    renderedContent: null | string;
-    jsonModel: null | string;
-    createdBy: CreatorInformation;
-    title: null | string;
-    attachments: Attachment;
-    threadId: string;
-    createdByIp: null | string;
-}
-
-interface CreatorInformation {
-    id: string;
-    avatarUrl: null | string;
-    name: null | string;
-    badgePermission: string;
-}
-
-interface Links {
-    first: { href: string }[];
-    last: { href: string }[];
-    previous?: { href: string }[];
-    next?: { href: string }[];
-}
-/* eslint-enable @typescript-eslint/naming-convention, unicorn/prevent-abbreviations */
-
-interface JsonModel {
-    type: string;
-    content: JsonModelContent[];
-}
-
-interface JsonModelContent {
-    type: string;
-    content?: Content[];
-    attrs?: ContentAttributes;
-}
-
-interface ContentAttributes {
-    id?: number | null;
-    attachment?: null;
-    url?: string;
-    wasAddedWithInlineLink?: boolean;
-    createdWith?: string;
-}
-
-interface Content {
-    type: string;
-    text: string;
-    content?: Content[];
-    marks?: {
-        type: string;
-        attrs?: { href: string; title: null };
-    }[];
-}
-
-async function getAllDiscussionPosts(postContainerType: ContainerType) {
-    const apiUrl = new URL('https://hypixel-skyblock.fandom.com/wikia.php');
-    apiUrl.searchParams.set('controller', 'DiscussionPost');
-    apiUrl.searchParams.set('method', 'getPosts');
-    apiUrl.searchParams.set('containerType', postContainerType);
-    apiUrl.searchParams.set('limit', '100');
-
-    let currentPage = 0;
-
-    const result = [];
-
-    while (true) {
-        Mwn.log(`[i] Getting message wall API page ${currentPage}`);
-
-        apiUrl.searchParams.set('page', currentPage.toString());
-
-        const response = await fetch(apiUrl);
-
-        if (!response.ok) throw new Error(`Wikia controller API request failed with status ${response.status}: ${response.statusText}`);
-
-        const responseData = (await response.json()) as WikiaControllerDiscussionPostGetPostsApiResponse;
-
-        result.push(...responseData._embedded['doc:posts']);
-
-        if (!('next' in responseData._links)) break;
-
-        await new Promise((resolve) => setTimeout(resolve, 200));
-
-        currentPage++;
-    }
-
-    return result;
-}
+import { Mwn } from 'mwn';
+import {
+    EARLIEST_VALID_EDIT_TIMESTAMP,
+    FANDOM_ONLY_SPECIAL_PAGES,
+    FANDOM_SOCIAL_LINK_PARTS,
+    FANDOM_WIKI_URL,
+    WIKI_URL,
+} from '../constants';
+import {
+    ContainerType,
+    getAllFandomDiscussionPosts,
+    getAllUsers,
+    getRenamedFandomUsers,
+    type DiscussionPost,
+    type FirstPost,
+    type JsonModel,
+    type JsonModelContent,
+} from '../functions';
 
 interface ForumData<HasFullFirstPost extends boolean = false> {
     username: string;
     threads: Record<
         string,
         HasFullFirstPost extends true
-            ? { firstPost: FirstPost; firstPostFull: DocPost; replies: DocPost[] }
-            : { firstPost: FirstPost; firstPostFull?: DocPost; replies: DocPost[] }
+            ? { firstPost: FirstPost; firstPostFull: DiscussionPost; replies: DiscussionPost[] }
+            : { firstPost: FirstPost; firstPostFull?: DiscussionPost; replies: DiscussionPost[] }
     >;
-}
-
-const LAST_VALID_TIMESTAMP = 1_776_701_820_000; // 12:17, April 20, 2026 (EST)
-
-async function getRenamedFandomUsers(fandomMwn: Mwn) {
-    return Object.fromEntries(
-        (
-            (await fandomMwn.continuedQuery({
-                action: 'query',
-                list: 'logevents',
-                leaction: 'move/move',
-                lenamespace: 1200,
-                lelimit: 'max',
-            })) as (ApiQueryResponse & { query: { logevents: LogEvent[] } })[]
-        )
-            .flatMap((result) => result.query.logevents)
-            .map((logEvent) => [
-                logEvent.title.split(':')[1],
-                // eslint-disable-next-line @typescript-eslint/naming-convention
-                (logEvent as { params: { target_ns: number; target_title: string } }).params.target_title.split(':')[1],
-            ]),
-    );
-}
-
-async function getAllUsers(mwn: Mwn) {
-    const users = (
-        (await mwn.continuedQuery(
-            {
-                action: 'query',
-                list: 'allusers',
-                aulimit: 'max',
-            },
-            500,
-        )) as ApiQueryResponse[]
-    ).flatMap(({ query }) => (query as unknown as { allusers: { name: string }[] }).allusers);
-
-    return users.map((user) => user.name);
 }
 
 const MANUAL_USERNAME_OVERRIDES: Record<string, string> = {
     /* eslint-disable @typescript-eslint/naming-convention */
-    IRXOSM01: 'Iro',
-    TheAetherSword: 'AetherSword',
     AaronLao123: 'Tawaru',
+    IRXOSM01: 'Iro',
+    PerfectPaenut: 'Paenut',
+    TheAetherSword: 'AetherSword',
     TheColdSheepIsBad: 'ColdShep',
     Whamikaze: 'Whami',
-    PerfectPaenut: 'Paenut',
     /* eslint-disable-enable @typescript-eslint/naming-convention */
 };
+
+export const USES_FANDOM_API = true;
 
 /**
  * This script is used to migrate message walls from Fandom to the migrated wiki.
@@ -305,19 +48,16 @@ const MANUAL_USERNAME_OVERRIDES: Record<string, string> = {
  * @param fandomMwn The Mwn instance for the Fandom wiki.
  */
 export default async function main(mwn: Mwn, fandomMwn: Mwn) {
-    const messageWallPosts =
-        getCache<DocPost[]>('message-wall-posts') ?? cacheData('message-wall-posts', await getAllDiscussionPosts(ContainerType.Wall));
+    const messageWallPosts = await getAllFandomDiscussionPosts(ContainerType.Wall);
 
-    const renamedFandomUsers =
-        getCache<Record<string, string>>('renamed-fandom-users') ??
-        cacheData('renamed-fandom-users', await getRenamedFandomUsers(fandomMwn));
+    const renamedFandomUsers = await getRenamedFandomUsers(fandomMwn);
 
-    const allUsers = new Set(getCache<string[]>('all-users') ?? cacheData('all-users', await getAllUsers(mwn)));
+    const allUsers = new Set(await getAllUsers(mwn));
 
     const messageWallThreads: Record<string, ForumData> = {};
 
     for (const post of messageWallPosts) {
-        if (post.creationDate.epochSecond * 1000 > LAST_VALID_TIMESTAMP) continue;
+        if (post.creationDate.epochSecond * 1000 > EARLIEST_VALID_EDIT_TIMESTAMP) continue;
 
         const { forumId, forumName, threadId } = post;
 
@@ -378,10 +118,19 @@ export default async function main(mwn: Mwn, fandomMwn: Mwn) {
     }
 }
 
-function getPostLink(post: DocPost) {
-    return `https://hypixel-skyblock.fandom.com/wiki/Message_Wall:${post.forumName.replace(' Message Wall', '')}?threadId=${post.threadId}#${post.id}`;
+/**
+ * Formats a link to a discussion post for use in error messages.
+ * @param post The discussion post to format a link for.
+ */
+function getPostLink(post: DiscussionPost) {
+    return `${FANDOM_WIKI_URL}/wiki/Message_Wall:${post.forumName.replace(' Message Wall', '')}?threadId=${post.threadId}#${post.id}`;
 }
 
+/**
+ * Escapes wikitext markup in a string, and optionally also escapes some HTML markup.
+ * @param string The string to escape.
+ * @param stripHtmlMarkup Whether to escape HTML markup in addition to wikitext markup. Defaults to `true`.
+ */
 function escapeMarkup(string: string, stripHtmlMarkup = true) {
     string = string.replaceAll('~~~', '~~&#126;').replaceAll('{', '&#123;').replaceAll('}', '&#125;');
 
@@ -390,7 +139,13 @@ function escapeMarkup(string: string, stripHtmlMarkup = true) {
     return string;
 }
 
-function formatParagraphContent(content: JsonModelContent, post: DocPost, depth: number) {
+/**
+ * Formats the content of a paragraph in the JSON model into wikitext.
+ * @param content The JSON model content of the paragraph to format.
+ * @param post The discussion post the paragraph belongs to, used for error messages.
+ * @param depth The depth of the post in the thread, used for indentation.
+ */
+function formatParagraphContent(content: JsonModelContent, post: DiscussionPost, depth: number) {
     if (!content.content) return '';
 
     return (
@@ -437,7 +192,13 @@ function formatParagraphContent(content: JsonModelContent, post: DocPost, depth:
     );
 }
 
-function formatJsonModel(jsonModel: JsonModel, post: DocPost, depth: number) {
+/**
+ * Formats the JSON model of a post into wikitext.
+ * @param jsonModel The JSON model to format.
+ * @param post The discussion post the JSON model belongs to, used for error messages.
+ * @param depth The depth of the post in the thread, used for indentation.
+ */
+function formatJsonModel(jsonModel: JsonModel, post: DiscussionPost, depth: number) {
     const indentation = ':'.repeat(depth);
 
     return (
@@ -539,8 +300,13 @@ function formatSignature(user: string, anon: boolean, timestamp: number, mwn: Mw
     return `${userLink} (${talkLink}) ${formattedTimestamp}`;
 }
 
+/**
+ * Formats a link and its title into appropriate wikitext.
+ * @param href The URL of the link.
+ * @param title The title of the link, used as the link text.
+ */
 function formatLink(href: string, title: string) {
-    if (href.startsWith('/')) href = `https://hypixel-skyblock.fandom.com${href}`;
+    if (href.startsWith('/')) href = `${FANDOM_WIKI_URL}${href}`;
     if (href.startsWith('Http')) href = href.replace(/^Http/, 'http');
 
     if (href.includes('youtu.be')) {
@@ -557,30 +323,7 @@ function formatLink(href: string, title: string) {
 
     if (
         /^https?:\/\/(hypixel-)?skyblock\.fandom\.com(\/wiki)?\/[^&?]+$/.test(href) &&
-        ![
-            '/f/p/',
-            '/f/u/',
-            'Special:AllMaps',
-            'Special:Announcements',
-            'Special:CloseMyAccount',
-            'Special:Community',
-            'Special:CreateBlogListingPage',
-            'Special:DiscussionsAbuseFilter',
-            'Special:DiscussionsLog',
-            'Special:DownloadYourData',
-            'Special:InfoboxBuilder',
-            'Special:Insights',
-            'Special:JSPages',
-            'Special:MapEditor',
-            'Special:QuickAnswers',
-            'Special:Reports',
-            'Special:SearchCommunity',
-            'Special:SocialActivity',
-            'Special:TagsReport',
-            'Special:ThemeDesigner',
-            'Special:UserRenameTool',
-            'Special:Forum',
-        ].some((string) => href.includes(string))
+        ![...FANDOM_SOCIAL_LINK_PARTS, ...FANDOM_ONLY_SPECIAL_PAGES].some((string) => href.includes(string))
     ) {
         const linkedPageName = /^https?:\/\/(?:hypixel-)?skyblock\.fandom\.com(?:\/wiki)?\/([^&?]+)$/.exec(href)![1];
 
@@ -588,7 +331,10 @@ function formatLink(href: string, title: string) {
         if (link.startsWith('Category:') || link.startsWith('File:') || link.startsWith('Image:')) link = `:${link}`;
         const formattedTitle = title.replace(/^https?:\/\/(hypixel-)?skyblock\.fandom\.com(\/wiki)?\//, '');
         return `[[${link === formattedTitle ? link : `${link}|${formattedTitle}`}]]`;
-    } else if (/^https?:\/\/[\da-z-]+\.fandom\.com(\/wiki)?\/[^&?]+$/.test(href) && !href.includes('/f/p/') && !href.includes('/f/u/')) {
+    } else if (
+        /^https?:\/\/[\da-z-]+\.fandom\.com(\/wiki)?\/[^&?]+$/.test(href) &&
+        !FANDOM_SOCIAL_LINK_PARTS.some((string) => href.includes(string))
+    ) {
         const urlData = /^https?:\/\/([\da-z-]+)\.fandom\.com(?:\/wiki)?\/([^&?]+)$/.exec(href)!;
         const [, subdomain, linkedPageName] = urlData;
         return `[[fandom:${subdomain}:${decodeURIComponent(linkedPageName).replaceAll('_', ' ')}|${title}]]`;
@@ -604,17 +350,20 @@ function formatLink(href: string, title: string) {
     } else {
         if (
             href.includes('skyblock.fandom.com') &&
-            !['replyId', 'commentId', 'threadId', 'Message_Wall', 'User_blog', 'f/p/', 'f/u/'].some((string) => href.includes(string))
+            !['replyId', 'commentId', 'threadId', 'Message_Wall', 'User_blog', ...FANDOM_SOCIAL_LINK_PARTS].some((string) =>
+                href.includes(string),
+            )
         )
-            href = href.replaceAll(
-                /https?:\/\/(?:hypixel-)?skyblock\.fandom\.com(?:\/wiki)?\//g,
-                'https://hypixel-skyblock.minecraft.wiki/',
-            );
+            href = href.replaceAll(/https?:\/\/(?:hypixel-)?skyblock\.fandom\.com(?:\/wiki)?\//g, `${WIKI_URL}/`);
 
         return `[${href} ${title}]`;
     }
 }
 
+/**
+ * Formats an HTML image from renderedContent into wikitext.
+ * @param content The HTML content containing the image tag and optionally a caption.
+ */
 function formatImage(content: string) {
     const imageName = /<img.+?data-image-name="(.+?)".*?\/>/.exec(content)![1];
     const imageCaption = /<p class="caption">(.*?)<\/p>/.exec(content)?.[1];
@@ -622,6 +371,11 @@ function formatImage(content: string) {
     return `[[File:${imageName}|thumb${imageCaption ? `|${imageCaption}` : ''}]]`;
 }
 
+/**
+ * Formats the renderedContent of a post into wikitext.
+ * @param renderedContent The renderedContent to format.
+ * @param depth The depth of the post in the thread, used for indentation.
+ */
 function formatRenderedContent(renderedContent: string, depth: number) {
     const indentation = ':'.repeat(depth);
 
@@ -667,7 +421,13 @@ function formatRenderedContent(renderedContent: string, depth: number) {
     return escapeMarkup(renderedContent, false);
 }
 
-function formatPost(post: DocPost, depth: number, mwn: Mwn) {
+/**
+ * Formats a discussion post into wikitext.
+ * @param post The discussion post to format.
+ * @param depth The depth of the post in the thread, used for indentation.
+ * @param mwn The Mwn instance, used for formatting timestamps in signatures.
+ */
+function formatPost(post: DiscussionPost, depth: number, mwn: Mwn) {
     const { jsonModel, renderedContent } = post;
 
     if (!jsonModel && !renderedContent) throw new Error(`Post missing both jsonModel and renderedContent: ${getPostLink(post)}`);
@@ -688,6 +448,11 @@ function formatPost(post: DocPost, depth: number, mwn: Mwn) {
     return content;
 }
 
+/**
+ * Builds the content to be added to the user's talk page from their message wall threads.
+ * @param forumData The forum data for the user's message wall.
+ * @param mwn The Mwn instance, used for formatting timestamps in signatures.
+ */
 function buildTalkContent(forumData: ForumData<true>, mwn: Mwn) {
     const sortedThreads = Object.values(forumData.threads).toSorted(
         (a, b) => a.firstPostFull.creationDate.epochSecond - b.firstPostFull.creationDate.epochSecond,
@@ -705,5 +470,3 @@ function buildTalkContent(forumData: ForumData<true>, mwn: Mwn) {
 
     return sections.join('\n\n');
 }
-
-export const USES_FANDOM_API = true;
