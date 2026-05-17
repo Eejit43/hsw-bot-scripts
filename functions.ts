@@ -99,21 +99,32 @@ interface WikiaControllerDiscussionPostGetPostsApiResponse {
     _embedded: Embedded; // eslint-disable-line @typescript-eslint/naming-convention
 }
 
+interface Links {
+    first: Link[];
+    last: Link[];
+    previous?: Link[];
+    next?: Link[];
+}
+
+interface Link {
+    href: string;
+}
+
 interface Embedded {
     'count': [{ ARTICLE_COMMENT: number; FORUM: number; WALL: number; total: number }];
     'wallOwners'?: { userId: string; wallContainerId: string }[];
-    'contributors': { count: number; userInfo: { id: string; avatarUrl: null | string; name: string; badgePermission: string }[] }[];
+    'contributors': { count: number; userInfo: UserInformation[] }[];
     'doc:posts': DiscussionPost[]; // eslint-disable-line @typescript-eslint/naming-convention
 }
 
 export interface DiscussionPost {
-    _links: { permalink: { href: string }[] }; // eslint-disable-line @typescript-eslint/naming-convention
-    createdBy: CreatorInformation;
+    _links: { permalink: Link[] }; // eslint-disable-line @typescript-eslint/naming-convention
+    createdBy: UserInformation;
     creationDate: CreationDate;
     creatorId: string;
     creatorIp: string;
     forumId: string;
-    forumName: string;
+    forumName: string | null;
     id: string;
     isContentSuppressed: boolean;
     isDeleted: boolean;
@@ -121,20 +132,21 @@ export interface DiscussionPost {
     isLocked: boolean;
     isReply: boolean;
     isReported: boolean;
-    jsonModel: null | string;
+    jsonModel: string | null;
     latestRevisionId: string;
     modificationDate: CreationDate | null;
     position: number;
     rawContent: string;
-    renderedContent: null | string;
+    renderedContent: string | null;
     requesterId: string;
     siteId: string;
-    threadCreatedBy: CreatorInformation;
+    threadCreatedBy: UserInformation;
     threadId: string;
-    title: null | string;
+    title: string | null;
     upvoteCount: number;
     _embedded: Embedded; // eslint-disable-line @typescript-eslint/naming-convention
-    lastEditedBy?: CreatorInformation;
+    funnel?: 'TEXT';
+    lastEditedBy?: UserInformation;
 }
 
 interface Embedded {
@@ -146,7 +158,7 @@ interface Embedded {
 }
 
 interface Attachment {
-    atMentions: [];
+    atMentions: UserInformation[];
     contentImages: ContentImage[];
     openGraphs: OpenGraph[];
     polls: [];
@@ -159,7 +171,7 @@ interface ContentImage {
     url: string;
     width: number;
     height: number;
-    mediaType: MediaType;
+    mediaType: MediaType | null;
 }
 
 enum MediaType {
@@ -175,14 +187,14 @@ interface OpenGraph {
     siteId: number;
     url: string;
     siteName: string | null;
-    title: null | string;
+    title: string | null;
     type: Type;
-    imageUrl: null | string;
-    description: null | string;
-    originalUrl: null | string;
-    videoUrl: null | string;
-    videoSecureUrl: null | string;
-    videoType: null | string;
+    imageUrl: string | null;
+    description: string | null;
+    originalUrl: string | null;
+    videoUrl: string | null;
+    videoSecureUrl: string | null;
+    videoType: string | null;
     videoHeight: number | null;
     videoWidth: number | null;
     imageHeight: number | null;
@@ -201,6 +213,7 @@ enum Type {
     FeedsPoll = 'feeds.POLL',
     FeedsText = 'feeds.TEXT',
     Image = 'image',
+    Object = 'object',
     Profile = 'profile',
     Summary = 'summary',
     SummaryLargeImage = 'summary_large_image',
@@ -213,10 +226,10 @@ interface LatestRevision {
     creatorId: string;
     creatorIp: string;
     id: string;
-    jsonModel: null | string;
+    jsonModel: string | null;
     postId: string;
     rawContent: string;
-    renderedContent: null | string;
+    renderedContent: string | null;
 }
 
 interface Thread {
@@ -231,7 +244,7 @@ interface Thread {
     isReported: boolean;
     postCount: string;
     tags: [];
-    title: null | string;
+    title: string | null;
 }
 
 export enum ContainerType {
@@ -242,27 +255,20 @@ export enum ContainerType {
 
 export interface FirstPost {
     id: string;
-    renderedContent: null | string;
-    jsonModel: null | string;
-    createdBy: CreatorInformation;
-    title: null | string;
+    renderedContent: string | null;
+    jsonModel: string | null;
+    createdBy: UserInformation;
+    title: string | null;
     attachments: Attachment;
     threadId: string;
-    createdByIp: null | string;
+    createdByIp: string | null;
 }
 
-interface CreatorInformation {
+interface UserInformation {
     id: string;
-    avatarUrl: null | string;
-    name: null | string;
+    avatarUrl: string | null;
+    name: string | null;
     badgePermission: string;
-}
-
-interface Links {
-    first: { href: string }[];
-    last: { href: string }[];
-    previous?: { href: string }[];
-    next?: { href: string }[];
 }
 
 export interface JsonModel {
@@ -290,7 +296,7 @@ interface Content {
     content?: Content[];
     marks?: {
         type: string;
-        attrs?: { href: string; title: null };
+        attrs?: { href: string; title: string | null };
     }[];
 }
 
@@ -316,7 +322,7 @@ export async function getAllFandomDiscussionPosts(postContainerType: ContainerTy
     const result = [];
 
     while (true) {
-        Mwn.log(`[i] Getting message wall API page ${currentPage}`);
+        Mwn.log(`[i] Getting ${postContainerType} discussion post API page ${currentPage}`);
 
         apiUrl.searchParams.set('page', currentPage.toString());
 

@@ -3,10 +3,16 @@
 import { Mwn } from 'mwn';
 import {
     EARLIEST_VALID_EDIT_TIMESTAMP,
-    FANDOM_ONLY_SPECIAL_PAGES,
-    FANDOM_SOCIAL_LINK_PARTS,
+    FANDOM_LINK_PREFIX_REGEX,
+    FANDOM_LINK_REGEX,
     FANDOM_WIKI_URL,
+    MEDIAWIKI_LINK_REGEX,
+    NAMESPACES_REQUIRING_COLONS,
+    NON_REPLACEABLE_FANDOM_LINK_REGEX,
+    REPLACEABLE_FANDOM_LINK_REGEX,
     WIKI_URL,
+    WIKIPEDIA_LINK_REGEX,
+    WIKIPEDIA_WIKIPEDIA_LINK_REGEX,
 } from '../constants';
 import {
     ContainerType,
@@ -62,7 +68,7 @@ export default async function main(mwn: Mwn, fandomMwn: Mwn) {
         const { forumId, forumName, threadId } = post;
 
         if (!(forumId in messageWallThreads)) {
-            let username = forumName.replace(' Message Wall', '').replaceAll('_', ' ');
+            let username = forumName!.replace(' Message Wall', '').replaceAll('_', ' ');
             if (username in renamedFandomUsers) username = renamedFandomUsers[username];
             else if (username in MANUAL_USERNAME_OVERRIDES) username = MANUAL_USERNAME_OVERRIDES[username];
 
@@ -123,7 +129,7 @@ export default async function main(mwn: Mwn, fandomMwn: Mwn) {
  * @param post The discussion post to format a link for.
  */
 function getPostLink(post: DiscussionPost) {
-    return `${FANDOM_WIKI_URL}/wiki/Message_Wall:${post.forumName.replace(' Message Wall', '')}?threadId=${post.threadId}#${post.id}`;
+    return `${FANDOM_WIKI_URL}/wiki/Message_Wall:${post.forumName!.replace(' Message Wall', '')}?threadId=${post.threadId}#${post.id}`;
 }
 
 /**
@@ -321,40 +327,37 @@ function formatLink(href: string, title: string) {
         href = newUrl;
     }
 
-    if (
-        /^https?:\/\/(hypixel-)?skyblock\.fandom\.com(\/wiki)?\/[^&?]+$/.test(href) &&
-        ![...FANDOM_SOCIAL_LINK_PARTS, ...FANDOM_ONLY_SPECIAL_PAGES].some((string) => href.includes(string))
-    ) {
-        const linkedPageName = /^https?:\/\/(?:hypixel-)?skyblock\.fandom\.com(?:\/wiki)?\/([^&?]+)$/.exec(href)![1];
+    if (REPLACEABLE_FANDOM_LINK_REGEX.test(href) && !NON_REPLACEABLE_FANDOM_LINK_REGEX.test(href)) {
+        const linkedPageName = REPLACEABLE_FANDOM_LINK_REGEX.exec(href)![1];
 
         let link = decodeURIComponent(linkedPageName).replaceAll('_', ' ');
-        if (link.startsWith('Category:') || link.startsWith('File:') || link.startsWith('Image:')) link = `:${link}`;
-        const formattedTitle = title.replace(/^https?:\/\/(hypixel-)?skyblock\.fandom\.com(\/wiki)?\//, '');
+        if (NAMESPACES_REQUIRING_COLONS.some((namespace) => link.startsWith(`${namespace}:`))) link = `:${link}`;
+        else if (link.startsWith('Message Wall:')) link = link.replace('Message Wall', 'User talk');
+        else if (link.startsWith('User blog:')) link = link.replace(/User[ _]blog:(.+?)\/(.+?)([\]|])/, 'User:$1/blogs/$2$3');
+
+        const formattedTitle = title.replace(FANDOM_LINK_PREFIX_REGEX, '');
+
         return `[[${link === formattedTitle ? link : `${link}|${formattedTitle}`}]]`;
-    } else if (
-        /^https?:\/\/[\da-z-]+\.fandom\.com(\/wiki)?\/[^&?]+$/.test(href) &&
-        !FANDOM_SOCIAL_LINK_PARTS.some((string) => href.includes(string))
-    ) {
-        const urlData = /^https?:\/\/([\da-z-]+)\.fandom\.com(?:\/wiki)?\/([^&?]+)$/.exec(href)!;
+    } else if (FANDOM_LINK_REGEX.test(href) && !NON_REPLACEABLE_FANDOM_LINK_REGEX.test(href)) {
+        const urlData = FANDOM_LINK_REGEX.exec(href)!;
         const [, subdomain, linkedPageName] = urlData;
         return `[[fandom:${subdomain}:${decodeURIComponent(linkedPageName).replaceAll('_', ' ')}|${title}]]`;
-    } else if (/^https?:\/\/en\.wikipedia\.org(\/wiki)?\/([Ww][Pp]|[Ww]ikipedia)[^&?]+$/.test(href)) {
-        const linkedPageName = /^https?:\/\/en\.wikipedia\.org(?:\/wiki)?\/([Ww][Pp]|[Ww]ikipedia)([^&?]+)$/.exec(href)![1];
+    } else if (WIKIPEDIA_WIKIPEDIA_LINK_REGEX.test(href)) {
+        const linkedPageName = WIKIPEDIA_WIKIPEDIA_LINK_REGEX.exec(href)![1];
         return `[[WP:${decodeURIComponent(linkedPageName).replaceAll('_', ' ')}|${title}]]`;
-    } else if (/^https?:\/\/en\.wikipedia\.org(\/wiki)?\/[^&?]+$/.test(href)) {
-        const linkedPageName = /^https?:\/\/en\.wikipedia\.org(?:\/wiki)?\/([^&?]+)$/.exec(href)![1];
+    } else if (WIKIPEDIA_LINK_REGEX.test(href)) {
+        const linkedPageName = WIKIPEDIA_LINK_REGEX.exec(href)![1];
         return `[[w:${decodeURIComponent(linkedPageName).replaceAll('_', ' ')}|${title}]]`;
-    } else if (/^https?:\/\/(www\.)mediawiki\.org(\/wiki)?\/[^&?]+$/.test(href)) {
-        const linkedPageName = /^https?:\/\/(www\.)mediawiki\.org(?:\/wiki)?\/([^&?]+)$/.exec(href)![1];
+    } else if (MEDIAWIKI_LINK_REGEX.test(href)) {
+        const linkedPageName = MEDIAWIKI_LINK_REGEX.exec(href)![1];
         return `[[mw:${decodeURIComponent(linkedPageName).replaceAll('_', ' ')}|${title}]]`;
     } else {
         if (
             href.includes('skyblock.fandom.com') &&
-            !['replyId', 'commentId', 'threadId', 'Message_Wall', 'User_blog', ...FANDOM_SOCIAL_LINK_PARTS].some((string) =>
-                href.includes(string),
-            )
+            !['replyId', 'commentId', 'threadId'].some((string) => href.includes(string)) &&
+            !NON_REPLACEABLE_FANDOM_LINK_REGEX.test(href)
         )
-            href = href.replaceAll(/https?:\/\/(?:hypixel-)?skyblock\.fandom\.com(?:\/wiki)?\//g, `${WIKI_URL}/`);
+            href = href.replaceAll(FANDOM_LINK_PREFIX_REGEX, `${WIKI_URL}/`);
 
         return `[${href} ${title}]`;
     }
