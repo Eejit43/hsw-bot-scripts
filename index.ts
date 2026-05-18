@@ -70,6 +70,7 @@ while (true) {
         await (usesFandomApi ? mainFunction(loadedMwnInstance, loadedFandomMwnInstance) : mainFunction(loadedMwnInstance));
     } catch (error) {
         console.error(styleText(['red'], `Error running script "${input}": ${error instanceof Error ? error.message : String(error)}`));
+        console.error(error instanceof Error ? error.stack : String(error));
         continue;
     }
 

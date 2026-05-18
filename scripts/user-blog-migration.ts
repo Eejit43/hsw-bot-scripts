@@ -1,16 +1,15 @@
 /* eslint-disable no-await-in-loop */
 
 import { Mwn } from 'mwn';
+import { Namespace } from '../constants';
 import { getAllPagesInNamespace, getAllUsers } from '../functions';
-
-const USER_BLOG_NAMESPACE = 500;
 
 /**
  * This script is used to migrate `User blog:.../...` pages to the new `User:.../blogs/...` format.
  * @param mwn The Mwn instance.
  */
 export default async function main(mwn: Mwn) {
-    const userBlogPages = await getAllPagesInNamespace(mwn, USER_BLOG_NAMESPACE);
+    const userBlogPages = await getAllPagesInNamespace(mwn, Namespace.UserBlog); // eslint-disable-line @typescript-eslint/no-deprecated
 
     const allUsers = new Set(await getAllUsers(mwn));
 
@@ -31,18 +30,18 @@ export default async function main(mwn: Mwn) {
         return { oldLocation: blogPage.title, newLocation: destination };
     });
 
-    for (const blogPage of parsedBlogPages) {
-        Mwn.log(`[i] Moving ${blogPage.oldLocation} to ${blogPage.newLocation}...`);
+    for (const [index, blogPage] of parsedBlogPages.entries()) {
+        Mwn.log(`[i] Moving ${blogPage.oldLocation} to ${blogPage.newLocation} (${index + 1}/${parsedBlogPages.length})`);
 
         await mwn.move(blogPage.oldLocation, blogPage.newLocation, 'Moving deprecated blog post to userspace', { noredirect: true });
     }
 
-    for (const username of usersWithBlogs) {
+    for (const [index, username] of [...usersWithBlogs].entries()) {
         const blogListingTitle = `User:${username}/blogs`;
 
         const content = `{{Special:PrefixIndex/${blogListingTitle}/|stripprefix=yes}}`;
 
-        Mwn.log(`[i] Creating blog listing page ${blogListingTitle}...`);
+        Mwn.log(`[i] Creating blog listing page ${blogListingTitle} (${index + 1}/${usersWithBlogs.size})`);
 
         await mwn.create(blogListingTitle, content, 'Creating blog listing page');
     }

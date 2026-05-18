@@ -80,7 +80,7 @@ export default async function main(mwn: Mwn, fandomMwn: Mwn) {
         for (const threadData of Object.values(forumData.threads))
             if (!threadData.firstPostFull) throw new Error(`Thread ${threadData.firstPost.id} is missing firstPostFull`);
 
-    for (const forumData of Object.values(messageWallThreads)) {
+    for (const [index, forumData] of Object.values(messageWallThreads).entries()) {
         if (!allUsers.has(forumData.username.replaceAll('_', ' ')))
             Mwn.log(`[W] User ${forumData.username} does not exist, but has a message wall on Fandom with more than a single thread.`);
 
@@ -94,7 +94,7 @@ export default async function main(mwn: Mwn, fandomMwn: Mwn) {
                 }
 
                 return {
-                    text: `${talkContent}\n\n${latestRevision.content}`,
+                    text: `${talkContent}\n\n${latestRevision.content}`.trim(),
                     summary: 'Migrating message wall content from Fandom',
                     bot: true,
                 };
@@ -107,7 +107,9 @@ export default async function main(mwn: Mwn, fandomMwn: Mwn) {
             else throw new Error(`Failed to edit talk page for user ${forumData.username}: ${(error as Error).message}`, { cause: error });
         }
 
-        Mwn.log(`[i] Finished migrating message wall for user ${forumData.username}`);
+        Mwn.log(
+            `[i] Finished migrating message wall for user ${forumData.username} (${index + 1}/${Object.values(messageWallThreads).length})`,
+        );
     }
 }
 

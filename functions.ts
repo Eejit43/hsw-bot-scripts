@@ -360,8 +360,13 @@ export async function getAllFandomDiscussionPosts(postContainerType: ContainerTy
  * @param post The discussion post to format a link for.
  */
 function getPostLink(post: DiscussionPost) {
-    return post.forumName?.includes('Message Wall')
-        ? `${FANDOM_WIKI_URL}/wiki/Message_Wall:${post.forumName.replace(' Message Wall', '')}?threadId=${post.threadId}#${post.id}`
+    if (post.forumName?.includes('Message Wall'))
+        return `${FANDOM_WIKI_URL}/wiki/Message_Wall:${post.forumName.replace(' Message Wall', '')}?threadId=${post.threadId}#${post.id}`;
+
+    const cachedTitles = getCache<Record<string, string>>('forum-article-titles') ?? {};
+
+    return post.forumId in cachedTitles
+        ? `${FANDOM_WIKI_URL}/wiki/${cachedTitles[post.forumId].replaceAll(' ', '_')}?commentId=${post.threadId}&replyId=${post.id}`
         : `forumId: ${post.forumId}, threadId: ${post.threadId}, commentId: ${post.id}`;
 }
 
@@ -496,9 +501,11 @@ function formatJsonModel(jsonModel: JsonModel, post: DiscussionPost, depth: numb
                         return `${indentation}* ${formatParagraphContent(content.content[0], post, 0)}`;
                     }
                     case 'code_block': {
-                        if (content.content?.length !== 1 || content.content[0].type !== 'text')
+                        if (!content.content) return '';
+
+                        if (content.content.length !== 1 || content.content[0].type !== 'text')
                             throw new Error(
-                                `Expected code_block to have exactly one content item of type text, got ${content.content?.length ?? 'no'} item(s) with the first being ${content.content?.[0].type ?? 'none'}: ${getPostLink(post)}`,
+                                `Expected code_block to have exactly one content item of type text, got ${content.content.length} item(s) with the first being ${content.content[0].type}: ${getPostLink(post)}`,
                             );
 
                         if (content.content[0].marks)
@@ -594,7 +601,7 @@ function formatLink(href: string, title: string) {
             !['replyId', 'commentId', 'threadId'].some((string) => href.includes(string)) &&
             !NON_REPLACEABLE_FANDOM_LINK_REGEX.test(href)
         )
-            href = href.replaceAll(FANDOM_LINK_PREFIX_REGEX, `${WIKI_URL}/`);
+            href = href.replace(FANDOM_LINK_PREFIX_REGEX, `${WIKI_URL}/`);
 
         return `[${href} ${title}]`;
     }
@@ -605,7 +612,7 @@ function formatLink(href: string, title: string) {
  * @param content The HTML content containing the image tag and optionally a caption.
  */
 function formatImage(content: string) {
-    const imageName = /<img.+?data-image-name="(.+?)".*?\/>/.exec(content)![1];
+    const imageName = /<img.+?data-image-name="(.+?)".*?\/>/.exec(content)?.[1] ?? `File:${/\?wpDestFile=(.+?) /.exec(content)![1]}`;
     const imageCaption = /<p class="caption">(.*?)<\/p>/.exec(content)?.[1];
 
     return `[[File:${imageName}|thumb${imageCaption ? `|${imageCaption}` : ''}]]`;
@@ -648,11 +655,11 @@ function formatRenderedContent(renderedContent: string, depth: number) {
         .replaceAll(/<\/?(li|ul)>/g, '') // Strip any leftover list elements
         .replaceAll(/<img(.*?)\/>/g, '&lt;img$1/&gt;'); // Escape any images that weren't created normally
 
-    if (/<(?!center|big|span|div|svg|use|code|pre|abbr|sup|sub|s|dl|dd|dt|hr|table|tbody|th|tr|td)[a-z]/.test(renderedContent)) {
+    if (/<(?!center|big|span|div|svg|use|code|pre|abbr|sup|sub|s|dl|dd|dt|hr|table|tbody|th|tr|td|u)[a-z]/.test(renderedContent)) {
         console.log(renderedContent);
         throw new Error(
             `A post contains unsupported HTML tags: ${renderedContent
-                .match(/<(?!center|big|span|div|svg|use|code|pre|abbr|sup|sub|s|dl|dd|dt|hr|table|tbody|th|tr|td)([a-z]+)/g)!
+                .match(/<(?!center|big|span|div|svg|use|code|pre|abbr|sup|sub|s|dl|dd|dt|hr|table|tbody|th|tr|td|u)([a-z]+)/g)!
                 .map((fullMatch) => fullMatch.slice(1))
                 .join(', ')}`,
         );
@@ -686,4 +693,104 @@ export function formatPost(post: DiscussionPost, depth: number, mwn: Mwn) {
     content += content.length > 0 && !content.endsWith('\n') ? ` ${signature}` : `${':'.repeat(depth)}${signature}`;
 
     return content;
+}
+
+/**
+ * Gets the title of the article associated with a forum thread on the Fandom wiki.
+ * @param forumId The ID of the forum thread to get the associated article title for.
+ */
+export async function getForumArticleTitle(forumId: string) {
+    const apiUrl = new URL(`${FANDOM_WIKI_URL}/wikia.php`);
+    apiUrl.searchParams.set('controller', 'ArticleComments');
+    apiUrl.searchParams.set('method', 'getArticleTitle');
+    apiUrl.searchParams.set('stablePageId', forumId);
+
+    const response = await fetch(apiUrl);
+
+    if (!response.ok) throw new Error(`Wikia controller API request failed with status ${response.status}: ${response.statusText}`);
+
+    const responseData = (await response.json()) as { title: string };
+
+    return responseData.title;
+}
+
+/**
+ * Gets the titles of the articles associated with a list of forum threads on the Fandom wiki, using caching to avoid redundant API calls.
+ * @param forumIds The IDs of the forum threads to get the associated article titles for.
+ */
+export async function getAllForumArticleTitles(forumIds: string[]) {
+    const cacheKey = 'forum-article-titles';
+
+    const cachedData = getCache<Record<string, string>>(cacheKey) ?? {};
+
+    const forumIdsToFetch = forumIds.filter((forumId) => !(forumId in cachedData));
+
+    for (const [index, forumId] of forumIdsToFetch.entries()) {
+        Mwn.log(`[i] Getting article title for forum ID ${forumId} (${index + 1}/${forumIdsToFetch.length})`);
+
+        try {
+            const articleTitle = await getForumArticleTitle(forumId);
+            cachedData[forumId] = articleTitle;
+        } catch (error) {
+            console.error(`[e] Failed to get article title for forum ID ${forumId}: ${(error as Error).message}`);
+        }
+    }
+
+    const sortedData = Object.fromEntries(
+        Object.entries(cachedData).toSorted(([forumIdA], [forumIdB]) => forumIdA.localeCompare(forumIdB)),
+    );
+
+    return cacheData(cacheKey, sortedData);
+}
+
+/**
+ * Gets a mapping of moved pages on the wiki, where the keys are the old page titles and the values are the new page titles.
+ * @param mwn The Mwn instance.
+ */
+export async function getAllMovedPages(mwn: Mwn) {
+    return (
+        getCache<Record<string, string>>('moved-pages') ??
+        cacheData(
+            'moved-pages',
+            Object.fromEntries(
+                (
+                    (await mwn.continuedQuery({
+                        action: 'query',
+                        list: 'logevents',
+                        leaction: 'move/move',
+                        lelimit: 'max',
+                    })) as (ApiQueryResponse & { query: { logevents: LogEvent[] } })[]
+                )
+                    .flatMap((result) => result.query.logevents)
+                    .map((logEvent) => [
+                        logEvent.title,
+                        // eslint-disable-next-line @typescript-eslint/naming-convention
+                        (logEvent as { params: { target_ns: number; target_title: string } }).params.target_title,
+                    ]),
+            ),
+        )
+    );
+}
+
+/**
+ * Gets a list of redirects on the wiki.
+ * @param mwn The Mwn instance.
+ */
+export async function getAllRedirects(mwn: Mwn) {
+    return (
+        getCache<string[]>('all-redirects') ??
+        cacheData(
+            'all-redirects',
+            (
+                (await mwn.continuedQuery({
+                    action: 'query',
+                    list: 'allpages',
+                    apfilterredir: 'redirects',
+                    aplimit: 'max',
+                })) as ApiQueryResponse[]
+            )
+                .flatMap(({ query }) => query.allpages!)
+                .map((page) => page.title),
+        )
+    );
 }
