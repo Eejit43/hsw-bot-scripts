@@ -1,7 +1,6 @@
 /* eslint-disable no-await-in-loop */
 
 import { Mwn } from 'mwn';
-import { writeFileSync } from 'node:fs';
 import { EARLIEST_VALID_EDIT_TIMESTAMP, Namespace } from '../constants';
 import {
     ContainerType,
@@ -152,8 +151,6 @@ export default async function main(mwn: Mwn, fandomMwn: Mwn) {
         }
 
         Mwn.log(`[i] Finished migrating article comments for ${forumData.article} (${index + 1}/${Object.values(articleComments).length})`);
-
-        writeFileSync(`debug/${forumData.article.replaceAll('/', ':')}.txt`, talkContent);
     }
 }
 

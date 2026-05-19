@@ -19,8 +19,6 @@ export default async function main(mwn: Mwn) {
         const username = blogPage.title.split('/')[0].split(':').slice(1).join(':');
         const blogTitle = blogPage.title.split('/').slice(1).join('/');
 
-        console.log({ username, blogTitle });
-
         if (!allUsers.has(username)) throw new Error(`User ${username} does not exist on the wiki!`);
 
         if (!usersWithBlogs.has(username)) usersWithBlogs.add(username);
