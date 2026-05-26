@@ -31,3 +31,21 @@ export function getCache<CacheData>(cacheName: string): CacheData | null {
 
     return null;
 }
+
+/**
+ * Retrieves input data from a JSON file in the "inputs" directory.
+ * @param inputName The name of the input to retrieve (without file extension).
+ * @returns The input data, or the default input if the input file does not exist (in which case the default input will be written to the file).
+ */
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
+export function getInput<Input>(inputName: string, defaultInput: Input): Input {
+    const inputFilePath = `./inputs/${inputName}.json`;
+
+    if (existsSync(inputFilePath)) {
+        const data = readFileSync(inputFilePath, 'utf8');
+        return JSON.parse(data) as Input;
+    } else {
+        writeFileSync(inputFilePath, JSON.stringify(defaultInput), 'utf8');
+        return defaultInput;
+    }
+}

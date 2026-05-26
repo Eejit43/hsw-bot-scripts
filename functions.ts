@@ -32,6 +32,20 @@ export async function getAllPagesInNamespace(mwn: Mwn, namespace: number) {
 }
 
 /**
+ * Gets information for all provided pages.
+ * @param mwn The Mwn instance.
+ * @param pages The pages to get information for.
+ */
+export async function getAllProvidedPages(mwn: Mwn, pages: { title: string }[]) {
+    return (
+        (await mwn.massQuery({
+            action: 'query',
+            titles: pages.map((page) => page.title),
+        })) as ApiQueryResponse[]
+    ).flatMap(({ query }) => query.pages!);
+}
+
+/**
  * Gets the latest revisions for a list of pages.
  * @param mwn The Mwn instance.
  * @param pages The pages to get revisions for.
