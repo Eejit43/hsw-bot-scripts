@@ -808,3 +808,27 @@ export async function getAllRedirects(mwn: Mwn) {
         )
     );
 }
+
+/**
+ * Gets a list of indefinitely blocked IPs on the wiki.
+ * @param mwn The Mwn instance.
+ */
+export async function getIndefinitelyBlockedIps(mwn: Mwn) {
+    return (
+        getCache<string[]>('indefinitely-blocked-ips') ??
+        cacheData(
+            'indefinitely-blocked-ips',
+            (
+                (await mwn.continuedQuery({
+                    action: 'query',
+                    list: 'blocks',
+                    bklimit: 'max',
+                    bkshow: ['!temp'], // For whatever reason, "ip" does not work here so it is filtered with anononly below instead
+                })) as ApiQueryResponse[]
+            )
+                .flatMap(({ query }) => query.blocks as { user: string; reason: string; anononly: boolean }[])
+                .filter((block) => block.anononly && !block.reason.toLowerCase().includes('open proxy'))
+                .map((block) => block.user),
+        )
+    );
+}
