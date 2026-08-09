@@ -810,6 +810,17 @@ export async function getAllRedirects(mwn: Mwn) {
 }
 
 /**
+ * Checks if a string is a valid IPv4 or IPv6 address, optionally with a CIDR suffix.
+ * @param string The string to check.
+ */
+function isIpAddress(string: string) {
+    return (
+        /^(\d{1,3}\.){3}\d{1,3}(\/\d{1,3})?$/.test(string) || // IPv4
+        /^([\dA-Fa-f]{0,4}:){2,7}[\dA-Fa-f]{0,4}(\/\d{1,3})?$/.test(string) // IPv6
+    );
+}
+
+/**
  * Gets a list of indefinitely blocked IPs on the wiki.
  * @param mwn The Mwn instance.
  */
@@ -823,11 +834,11 @@ export async function getIndefinitelyBlockedIps(mwn: Mwn) {
                     action: 'query',
                     list: 'blocks',
                     bklimit: 'max',
-                    bkshow: ['!temp'], // For whatever reason, "ip" does not work here so it is filtered with anononly below instead
+                    bkshow: ['!temp'], // For whatever reason, "ip" does not work here so it is filtered with regex later on
                 })) as ApiQueryResponse[]
             )
-                .flatMap(({ query }) => query.blocks as { user: string; reason: string; anononly: boolean }[])
-                .filter((block) => block.anononly && !block.reason.toLowerCase().includes('open proxy'))
+                .flatMap(({ query }) => query.blocks as { user: string; reason: string }[])
+                .filter((block) => isIpAddress(block.user) && !block.reason.toLowerCase().includes('open proxy'))
                 .map((block) => block.user),
         )
     );
