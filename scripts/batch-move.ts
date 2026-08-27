@@ -35,7 +35,7 @@ export default async function main(mwn: Mwn) {
         return;
     }
 
-    for (const { from, to } of pageMoves.slice(1))
+    for (const { from, to } of pageMoves)
         try {
             await mwn.move(from, to, summary, { noredirect: !redirect });
             Mwn.log(`[i] Moved "${from}" to "${to}".`);
